@@ -1,0 +1,34 @@
+name: 每日自動更新腳本
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # 國際標準時間 7:00 等於台灣時間 15:00
+  workflow_dispatch: # 讓您可以手動點按鈕測試
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 賦予寫入權限，讓它能存回文案檔
+    steps:
+      - name: 檢查程式碼
+        uses: actions/checkout@v3
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: 安裝工具套件
+        run: pip install yfinance pandas
+
+      - name: 執行抓取程式
+        run: python main.py
+
+      - name: 將結果存回雲端
+        run: |
+          git config --global user.name "AI-Bot"
+          git config --global user.email "bot@github.com"
+          git add daily_script.txt
+          git commit -m "更新今日腳本: $(date)" || exit 0
+          git push
