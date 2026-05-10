@@ -1,11 +1,15 @@
 """
-全自動影片合成機 v1
-功能：讀取 v2 產出的腳本/圖表，加上 TTS 配音 + 燒入字幕，合成 30 秒 YouTube Shorts 影片
-依賴：gTTS（雲端 TTS、免費）、ffmpeg（GitHub Actions runner 內建）
+全自動影片合成機 v2
+升級重點：
+- TTS 從 gTTS 換成 edge-tts（微軟神經網絡 TTS，免費、自然度大幅提升）
+- 字幕字級縮小（12pt）
+- 字幕位置往下挪（離底部 30px，原本 80）
+- 配音速度 +15%（比正常快一點點）
 """
 import os
 import subprocess
-from gtts import gTTS
+import asyncio
+import edge_tts
 
 SCRIPT_FILE = "daily_script.txt"
 CHART_FILE = "daily_chart.png"
@@ -13,9 +17,18 @@ TTS_AUDIO = "daily_tts.mp3"
 SUBS_SRT = "daily_video_subs.srt"
 OUTPUT_VIDEO = "daily_video.mp4"
 
+# ============================================================
+# Edge TTS 設定（可以自己挑語音）
+# ============================================================
+# 台灣女聲：zh-TW-HsiaoChenNeural（推薦，自然清晰）
+# 台灣女聲：zh-TW-HsiaoYuNeural（活潑年輕）
+# 台灣男聲：zh-TW-YunJheNeural（沉穩專業）
+VOICE = "zh-TW-HsiaoChenNeural"
+TTS_RATE = "+15%"   # 比正常快 15%，可改 +0% / +10% / +25%
+
 
 # ============================================================
-# 1. 讀腳本（排除標題行）
+# 1. 讀腳本
 # ============================================================
 
 def load_script_lines():
@@ -26,25 +39,28 @@ def load_script_lines():
         s = raw.strip()
         if not s:
             continue
-        if s.startswith("#"):  # 略過 markdown 標題
+        if s.startswith("#"):
             continue
         lines.append(s)
     return lines
 
 
 # ============================================================
-# 2. TTS 配音
+# 2. TTS 配音（edge-tts 神經網絡語音）
 # ============================================================
+
+async def synthesize_async(text, output_file):
+    communicate = edge_tts.Communicate(text, VOICE, rate=TTS_RATE)
+    await communicate.save(output_file)
+
 
 def synthesize_tts(lines, output_file):
     text = "。".join(lines)
-    tts = gTTS(text=text, lang="zh-tw", slow=False)
-    tts.save(output_file)
+    asyncio.run(synthesize_async(text, output_file))
     return output_file
 
 
 def get_audio_duration(audio_file):
-    """用 ffprobe 取得音訊長度（秒）"""
     result = subprocess.run(
         ["ffprobe", "-v", "error",
          "-show_entries", "format=duration",
@@ -56,7 +72,7 @@ def get_audio_duration(audio_file):
 
 
 # ============================================================
-# 3. 重新生成字幕（用實際音訊長度均分）
+# 3. 字幕重新對齊
 # ============================================================
 
 def regenerate_srt(lines, total_duration, output_file):
@@ -83,17 +99,18 @@ def srt_time(seconds):
 
 
 # ============================================================
-# 4. ffmpeg 合成影片
+# 4. 合成影片
 # ============================================================
 
 def compose_video(image_file, audio_file, srt_file, output_file, duration):
     style = (
         "FontName=Noto Sans CJK TC,"
-        "FontSize=18,"
+        "FontSize=12,"                  # 18 → 12（小一些，不擋畫面）
         "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,"
         "BorderStyle=1,Outline=2,"
-        "Alignment=2,MarginV=80"
+        "Alignment=2,"                  # 底部置中
+        "MarginV=30"                    # 80 → 30（更靠近底部）
     )
     cmd = [
         "ffmpeg", "-y",
@@ -122,7 +139,7 @@ def main():
     lines = load_script_lines()
     print(f"   - 共 {len(lines)} 句")
 
-    print("🔊 生成 TTS 配音...")
+    print(f"🔊 edge-tts 生成配音（語音 {VOICE}，速度 {TTS_RATE}）...")
     synthesize_tts(lines, TTS_AUDIO)
     duration = get_audio_duration(TTS_AUDIO)
     print(f"   - 音訊長度：{duration:.2f} 秒")
