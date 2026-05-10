@@ -1,36 +1,40 @@
-name: 每日自動更新腳本
-on:
-  schedule:
-    - cron: '0 7 * * *' # 國際標準時間 7:00 等於台灣時間 15:00
-  workflow_dispatch: # 讓您可以手動點按鈕測試
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # 賦予寫入權限，讓它能存回文案檔
-    steps:
-      - name: 檢查程式碼
-        uses: actions/checkout@v4
+import os
+import yfinance as yf
+from google import genai
 
-      - name: 安裝 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+# 1. 設定 AI (從您的 GitHub 保險箱讀取密鑰)
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-      - name: 安裝工具套件
-        run: |
-          python -m pip install --upgrade pip
-          pip install yfinance pandas google-genai
+# 2. 抓取金融數據 (台積電、美股標普500、台幣匯率)
+stocks = {"2330.TW": "台積電", "^GSPC": "美股標普500", "USDTWD=X": "台幣匯率"}
+df = yf.download(list(stocks.keys()), period="5d", auto_adjust=True)['Close']
+df = df.dropna()  # 排除假日空值
 
-      - name: 執行抓取程式
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python main.py
+prices = df.iloc[-1]
+changes = ((df.iloc[-1] - df.iloc[-2]) / df.iloc[-2]) * 100
 
-      - name: 將結果存回雲端
-        run: |
-          git config --global user.name "AI-Bot"
-          git config --global user.email "bot@github.com"
-          git add daily_script.txt
-          git commit -m "更新今日腳本: $(date -u +'%Y-%m-%d')" || exit 0
-          git push
+# 3. 整理數據交給 AI 撰寫
+data_summary = ""
+for code, name in stocks.items():
+    data_summary += f"{name} 最新價格: {prices[code]:.2f}, 漲跌幅: {changes[code]:+.2f}%\n"
+
+# 4. 讓 AI 生成生動的 YouTube Shorts 腳本
+prompt = f"""
+你是一位專業的財經短影音創作者，風格要像『標題黨』，非常吸睛。
+請根據以下數據，寫一段 30 秒的 YouTube Shorts 腳本。
+要求：標題要有爆發力，內容要有情緒起伏（例如：震驚或機會來了），並呼籲觀眾點讚追蹤。
+數據如下：
+{data_summary}
+"""
+
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=prompt,
+)
+ai_script = response.text
+
+# 5. 將 AI 寫好的腳本存入 daily_script.txt
+with open("daily_script.txt", "w", encoding="utf-8") as f:
+    f.write(ai_script)
+
+print("✅ AI 腳本已生成成功！")
