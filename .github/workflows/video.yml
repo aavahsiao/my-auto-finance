@@ -27,8 +27,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 安裝 gTTS
-        run: pip install gTTS
+      - name: 安裝 edge-tts（微軟神經網絡 TTS）
+        run: pip install edge-tts
 
       - name: 合成影片（ffmpeg 已內建在 runner）
         run: python video.py
