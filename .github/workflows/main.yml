@@ -20,7 +20,7 @@ jobs:
           python-version: '3.9'
 
       - name: 安裝工具套件
-        run: pip install yfinance pandas
+        run: pip install yfinance pandas google-generativeai
 
       - name: 執行抓取程式
         run: python main.py
